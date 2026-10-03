@@ -64,6 +64,10 @@
     border-color: var(--amber);
     background: #1c1608;
   }
+  .panel.selected {
+    border-color: var(--ok);
+  }
+  .panel.selected .label { color: var(--ok); }
   .panel .label { font-size: 13px; color: #a8b8d0; margin-bottom: 10px; letter-spacing: 1px; }
   .panel.active .label { color: var(--amber); }
   .mic {
@@ -98,6 +102,16 @@
   #startBtn.running {
     background: #b04a4a; color: #fff;
   }
+
+  #clearBtn {
+    width: 100%; max-width: 420px;
+    padding: 9px;
+    border: 1px solid var(--line); border-radius: 10px;
+    background: transparent; color: #a8b8d0;
+    font-size: 13px; letter-spacing: 0.5px;
+    margin-bottom: 12px;
+  }
+  #clearBtn:active { background: var(--navy); }
 
   #status {
     width: 100%; max-width: 420px;
@@ -160,6 +174,7 @@
 </div>
 
 <button id="startBtn">대화 시작</button>
+<button id="clearBtn">🗑 대화 내용 지우기</button>
 <div id="status">언어를 선택하고 "대화 시작"을 눌러주세요</div>
 <div id="log"></div>
 
@@ -194,9 +209,12 @@
   const warningEl = document.getElementById('warning');
 
   function updateLabels(){
-    otherLabel.textContent = LANGS[targetSelect.value].name + '로 말하기';
+    otherLabel.textContent = LANGS[targetSelect.value].name;
   }
-  targetSelect.addEventListener('change', updateLabels);
+  targetSelect.addEventListener('change', () => {
+    updateLabels();
+    if (!running) setSelectedPanel(startSide); // 언어를 바꾸면 안내 문구도 새 언어로 갱신
+  });
   updateLabels();
 
   // ---------- 음성 인식 지원 확인 ----------
@@ -232,8 +250,10 @@
     return new Promise((resolve) => {
       const utter = new SpeechSynthesisUtterance(text);
       utter.lang = langCode;
-      utter.onend = resolve;
-      utter.onerror = resolve;
+      // 말이 끝난 뒤에도 스피커 잔향/지연 때문에 마이크가 자기 목소리를 다시 주워듣는
+      // "에코" 문제가 있어서, onend가 불려도 약간(600ms) 더 기다린 뒤에 resolve 한다.
+      utter.onend = () => setTimeout(resolve, 600);
+      utter.onerror = () => setTimeout(resolve, 600);
       speechSynthesis.cancel();
       speechSynthesis.speak(utter);
     });
@@ -266,6 +286,17 @@
   let running = false;
   let currentSide = 'ko'; // 'ko' 또는 'other' — 지금 누구 차례인지
   let currentRecognition = null;
+  let startSide = 'ko'; // 대화 시작 전, 누가 먼저 말할지 선택한 쪽
+
+  function setSelectedPanel(side){
+    startSide = side;
+    panelKo.classList.toggle('selected', side === 'ko');
+    panelOther.classList.toggle('selected', side === 'other');
+    statusEl.textContent = side === 'ko'
+      ? '한국어가 먼저 말해요 — "대화 시작"을 눌러주세요'
+      : `${LANGS[targetSelect.value].name}가 먼저 말해요 — "대화 시작"을 눌러주세요`;
+  }
+  setSelectedPanel('ko'); // 기본값: 한국어가 먼저 시작
 
   function setActivePanel(side){
     panelKo.classList.toggle('active', side === 'ko');
@@ -340,7 +371,7 @@
   function startConversation(){
     if (!SpeechRecognitionCtor) return;
     running = true;
-    currentSide = 'ko';
+    currentSide = startSide;
     startBtn.textContent = '대화 종료';
     startBtn.classList.add('running');
     listenTurn();
@@ -353,12 +384,18 @@
     clearActivePanel();
     startBtn.textContent = '대화 시작';
     startBtn.classList.remove('running');
-    statusEl.textContent = '"대화 시작"을 눌러 다시 시작할 수 있어요';
+    setSelectedPanel(startSide);
   }
 
   startBtn.addEventListener('click', () => {
     if (running) stopConversation();
     else startConversation();
+  });
+
+  // ---------- 대화 로그 지우기 ----------
+  const clearBtn = document.getElementById('clearBtn');
+  clearBtn.addEventListener('click', () => {
+    logEl.innerHTML = '';
   });
 
   // 특정 언어 차례를 놓쳤거나 순서를 바꾸고 싶을 때, 원하는 쪽 패널을 눌러 수동으로 전환
@@ -368,8 +405,10 @@
     currentSide = side;
     listenTurn();
   }
-  panelKo.addEventListener('click', () => forceSwitch('ko'));
-  panelOther.addEventListener('click', () => forceSwitch('other'));
+  // 대화 시작 전에는 패널을 눌러서 "누가 먼저 말할지"를 고르고,
+  // 대화 중에는 같은 패널을 눌러서 차례를 강제로 전환한다.
+  panelKo.addEventListener('click', () => running ? forceSwitch('ko') : setSelectedPanel('ko'));
+  panelOther.addEventListener('click', () => running ? forceSwitch('other') : setSelectedPanel('other'));
 })();
 </script>
 </body>
