@@ -298,8 +298,8 @@
     panelKo.classList.toggle('selected', side === 'ko');
     panelOther.classList.toggle('selected', side === 'other');
     statusEl.textContent = side === 'ko'
-      ? '한국어가 먼저 말해요 — "대화 시작"을 눌러주세요'
-      : `${LANGS[targetSelect.value].name}가 먼저 말해요 — "대화 시작"을 눌러주세요`;
+      ? '한국어로 먼저 말해요 — "대화 시작"을 눌러주세요'
+      : `${LANGS[targetSelect.value].name}로 먼저 말해요 — "대화 시작"을 눌러주세요`;
   }
   setSelectedPanel('ko'); // 기본값: 한국어가 먼저 시작
 
