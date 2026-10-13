@@ -70,6 +70,7 @@
   .panel.selected .label { color: var(--ok); }
   .panel .label { font-size: 13px; color: #a8b8d0; margin-bottom: 10px; letter-spacing: 1px; }
   .panel.active .label { color: var(--amber); }
+  .panel .label .sub { display: block; font-size: 11px; opacity: 0.75; margin-top: 3px; letter-spacing: 0; }
   .mic {
     width: 74px; height: 74px; border-radius: 50%;
     border: 2px solid var(--amber);
@@ -181,12 +182,13 @@
 <script>
 (function(){
   const LANGS = {
-    en: { name: '영어',    recog: 'en-US', tts: 'en-US' },
-    zh: { name: '중국어',  recog: 'zh-CN', tts: 'zh-CN' },
-    ja: { name: '일본어',  recog: 'ja-JP', tts: 'ja-JP' },
-    es: { name: '스페인어', recog: 'es-ES', tts: 'es-ES' },
-    fr: { name: '프랑스어', recog: 'fr-FR', tts: 'fr-FR' },
-    de: { name: '독일어',  recog: 'de-DE', tts: 'de-DE' },
+    // koInLang = 그 언어로 쓴 "한국어", selfName = 그 언어 자신의 이름(예: 日本語)
+    en: { name: '영어',    recog: 'en-US', tts: 'en-US', koInLang: 'Korean',    selfName: 'English'  },
+    zh: { name: '중국어',  recog: 'zh-CN', tts: 'zh-CN', koInLang: '韩语',      selfName: '中文'      },
+    ja: { name: '일본어',  recog: 'ja-JP', tts: 'ja-JP', koInLang: '韓国語',    selfName: '日本語'    },
+    es: { name: '스페인어', recog: 'es-ES', tts: 'es-ES', koInLang: 'Coreano',   selfName: 'Español'  },
+    fr: { name: '프랑스어', recog: 'fr-FR', tts: 'fr-FR', koInLang: 'Coréen',    selfName: 'Français' },
+    de: { name: '독일어',  recog: 'de-DE', tts: 'de-DE', koInLang: 'Koreanisch', selfName: 'Deutsch'  },
   };
   const KO = { recog: 'ko-KR', tts: 'ko-KR' };
 
@@ -209,7 +211,10 @@
   const warningEl = document.getElementById('warning');
 
   function updateLabels(){
-    otherLabel.textContent = LANGS[targetSelect.value].name;
+    const L = LANGS[targetSelect.value];
+    // 한글 이름 밑에, 선택한 상대 언어로 쓴 이름을 작게 함께 표시
+    koLabel.innerHTML = `한국어<span class="sub" lang="${targetSelect.value}">${L.koInLang}</span>`;
+    otherLabel.innerHTML = `${L.name}<span class="sub" lang="${targetSelect.value}">${L.selfName}</span>`;
   }
   targetSelect.addEventListener('change', () => {
     updateLabels();
