@@ -146,10 +146,12 @@
   .saveItem .info { flex: 1; min-width: 0; cursor: pointer; }
   .saveItem .nm { font-size: 14px; word-break: break-all; }
   .saveItem .meta { font-size: 11px; color: #6a7a96; margin-top: 2px; }
+  .saveItem .acts { display: flex; flex-direction: column; gap: 6px; }
   .saveItem button {
     border: 1px solid #b04a4a; color: #ffb3b3; background: transparent;
-    border-radius: 6px; padding: 6px 8px; font-size: 12px;
+    border-radius: 6px; padding: 6px 8px; font-size: 12px; white-space: nowrap;
   }
+  .saveItem button.dl { border-color: var(--ok); color: var(--ok); }
   .modal .empty { color: #6a7a96; font-size: 13px; text-align: center; padding: 18px 0; }
   .modal .viewLog { display: flex; flex-direction: column; gap: 8px; }
 
@@ -522,6 +524,31 @@
     statusEl.textContent = `저장했어요: ${name} (${n}개 말풍선)`;
   });
 
+  // 저장 대화 → 읽기 좋은 텍스트
+  function saveToText(item){
+    const other = (LANGS[item.lang] || { name: '상대 언어' }).name;
+    const lines = [item.name, `저장: ${fmtDate(item.savedAt)} · 한국어 ⇄ ${other}`, ''];
+    item.entries.forEach(en => {
+      // side 'other' = 한국어 화자가 말한 것(번역은 상대 언어), 'ko' = 상대 언어 화자가 말한 것
+      const speaker = en.side === 'other' ? '한국어' : other;
+      lines.push(`[${speaker}] ${en.orig}`, `  → ${en.text}`, '');
+    });
+    return lines.join('\n');
+  }
+  function downloadSave(item){
+    // 맨 앞 BOM(﻿): 안드로이드 메모/뷰어가 한글 UTF-8을 정확히 인식하게 해줌
+    const blob = new Blob(['﻿' + saveToText(item)], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = item.name.replace(/[\\/:*?"<>|]/g, '_') + '.txt';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }
+  function shareSave(item){
+    navigator.share({ title: item.name, text: saveToText(item) }).catch(() => {}); // 취소는 무시
+  }
+
   const listOverlay = document.getElementById('listOverlay');
   const listBody = document.getElementById('listBody');
   const listTitle = document.getElementById('listTitle');
@@ -546,13 +573,23 @@
       meta.textContent = `${fmtDate(item.savedAt)} · ${item.entries.length}개`;
       info.appendChild(nm); info.appendChild(meta);
       info.addEventListener('click', () => renderView(item));
+      const acts = document.createElement('div'); acts.className = 'acts';
+      const dl = document.createElement('button'); dl.className = 'dl'; dl.textContent = '⬇ 다운로드';
+      dl.addEventListener('click', () => downloadSave(item));
+      acts.appendChild(dl);
+      if (navigator.share){ // 지원하는 브라우저에서만: 삼성 메모 등 다른 앱으로 공유
+        const sh = document.createElement('button'); sh.className = 'dl'; sh.textContent = '📤 공유';
+        sh.addEventListener('click', () => shareSave(item));
+        acts.appendChild(sh);
+      }
       const del = document.createElement('button'); del.textContent = '삭제';
       del.addEventListener('click', () => {
         if (!confirm(`"${item.name}" 저장 대화를 삭제할까요?`)) return;
         writeSaves(loadSaves().filter(s => s.id !== item.id));
         renderList();
       });
-      row.appendChild(info); row.appendChild(del);
+      acts.appendChild(del);
+      row.appendChild(info); row.appendChild(acts);
       listBody.appendChild(row);
     });
   }
