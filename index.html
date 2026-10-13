@@ -104,15 +104,54 @@
     background: #b04a4a; color: #fff;
   }
 
-  #clearBtn {
+  #logBtns {
     width: 100%; max-width: 420px;
-    padding: 9px;
+    display: flex; gap: 8px; margin-bottom: 12px;
+  }
+  #logBtns button {
+    flex: 1; padding: 9px 4px;
     border: 1px solid var(--line); border-radius: 10px;
     background: transparent; color: #a8b8d0;
-    font-size: 13px; letter-spacing: 0.5px;
-    margin-bottom: 12px;
+    font-size: 12.5px;
   }
-  #clearBtn:active { background: var(--navy); }
+  #logBtns button:active { background: var(--navy); }
+
+  /* 저장 / 목록 팝업 */
+  .overlay {
+    position: fixed; inset: 0; background: rgba(5,10,18,0.78);
+    display: none; align-items: center; justify-content: center; padding: 16px; z-index: 10;
+  }
+  .overlay.show { display: flex; }
+  .modal {
+    width: 100%; max-width: 420px; max-height: 85vh; overflow-y: auto;
+    background: var(--navy); border: 1px solid var(--amber-deep); border-radius: 14px;
+    padding: 16px;
+  }
+  .modal h2 { margin: 0 0 12px; font-size: 16px; color: var(--amber); }
+  .modal input[type=text] {
+    width: 100%; padding: 10px; border-radius: 8px; font-size: 15px;
+    border: 1px solid var(--line); background: var(--navy-deep); color: var(--paper);
+  }
+  .modal .row { display: flex; gap: 8px; margin-top: 12px; }
+  .modal .row button {
+    flex: 1; padding: 10px; border-radius: 8px; font-size: 14px;
+    border: 1px solid var(--line); background: transparent; color: var(--paper);
+  }
+  .modal .row button.primary { background: var(--amber); color: var(--navy-deep); border-color: var(--amber); font-weight: 700; }
+  .modal .row button.danger { color: #ffb3b3; border-color: #b04a4a; }
+  .saveItem {
+    display: flex; align-items: center; gap: 8px; padding: 10px;
+    border: 1px solid var(--line); border-radius: 8px; margin-bottom: 8px;
+  }
+  .saveItem .info { flex: 1; min-width: 0; cursor: pointer; }
+  .saveItem .nm { font-size: 14px; word-break: break-all; }
+  .saveItem .meta { font-size: 11px; color: #6a7a96; margin-top: 2px; }
+  .saveItem button {
+    border: 1px solid #b04a4a; color: #ffb3b3; background: transparent;
+    border-radius: 6px; padding: 6px 8px; font-size: 12px;
+  }
+  .modal .empty { color: #6a7a96; font-size: 13px; text-align: center; padding: 18px 0; }
+  .modal .viewLog { display: flex; flex-direction: column; gap: 8px; }
 
   #status {
     width: 100%; max-width: 420px;
@@ -175,9 +214,35 @@
 </div>
 
 <button id="startBtn">대화 시작</button>
-<button id="clearBtn">🗑 대화 내용 지우기</button>
+<div id="logBtns">
+  <button id="clearBtn">🗑 대화 내용 지우기</button>
+  <button id="saveBtn">💾 대화 내용 저장하기</button>
+  <button id="listBtn">📂 저장 목록</button>
+</div>
 <div id="status">언어를 선택하고 "대화 시작"을 눌러주세요</div>
 <div id="log"></div>
+
+<div class="overlay" id="saveOverlay">
+  <div class="modal">
+    <h2>대화 내용 저장하기</h2>
+    <input type="text" id="saveName" maxlength="40" placeholder="저장 이름을 입력하세요">
+    <div class="row">
+      <button id="saveCancel">취소</button>
+      <button id="saveOk" class="primary">저장하고 지우기</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="listOverlay">
+  <div class="modal">
+    <h2 id="listTitle">저장된 대화 목록</h2>
+    <div id="listBody"></div>
+    <div class="row">
+      <button id="listBack" style="display:none">← 목록으로</button>
+      <button id="listClose">닫기</button>
+    </div>
+  </div>
+</div>
 
 <script>
 (function(){
@@ -231,11 +296,21 @@
     document.getElementById('startBtn').style.opacity = 0.4;
   }
 
-  function addBubble(sideClass, origText, translatedText){
+  // 화면 말풍선과 별개로, 저장용 대화 기록을 배열로 들고 있는다
+  let entries = [];
+
+  function makeBubble(sideClass, origText, translatedText){
     const b = document.createElement('div');
     b.className = 'bubble ' + sideClass;
-    b.innerHTML = `<div class="orig">${origText}</div><div>${translatedText}</div>`;
-    logEl.appendChild(b);
+    const o = document.createElement('div'); o.className = 'orig'; o.textContent = origText;
+    const t = document.createElement('div'); t.textContent = translatedText;
+    b.appendChild(o); b.appendChild(t);
+    return b;
+  }
+
+  function addBubble(sideClass, origText, translatedText){
+    entries.push({ side: sideClass, orig: origText, text: translatedText });
+    logEl.appendChild(makeBubble(sideClass, origText, translatedText));
     logEl.scrollTop = logEl.scrollHeight;
   }
 
@@ -398,10 +473,102 @@
   });
 
   // ---------- 대화 로그 지우기 ----------
-  const clearBtn = document.getElementById('clearBtn');
-  clearBtn.addEventListener('click', () => {
+  function clearLog(){
     logEl.innerHTML = '';
+    entries = [];
+  }
+  document.getElementById('clearBtn').addEventListener('click', clearLog);
+
+  // ---------- 대화 저장 / 목록 (이 브라우저의 localStorage에 보관) ----------
+  const STORE_KEY = 'rt_saved_chats_v1';
+  function loadSaves(){
+    try { return JSON.parse(localStorage.getItem(STORE_KEY)) || []; }
+    catch(e){ return []; }
+  }
+  function writeSaves(list){
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(list)); return true; }
+    catch(e){ return false; }
+  }
+  function fmtDate(ts){
+    const d = new Date(ts), p = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
+
+  const saveOverlay = document.getElementById('saveOverlay');
+  const saveName = document.getElementById('saveName');
+  document.getElementById('saveBtn').addEventListener('click', () => {
+    if (entries.length === 0){
+      statusEl.textContent = '저장할 대화가 없어요.';
+      return;
+    }
+    saveName.value = `${fmtDate(Date.now())} ${LANGS[targetSelect.value].name}`;
+    saveOverlay.classList.add('show');
+    saveName.focus(); saveName.select();
   });
+  document.getElementById('saveCancel').addEventListener('click', () => saveOverlay.classList.remove('show'));
+  document.getElementById('saveOk').addEventListener('click', () => {
+    const name = saveName.value.trim();
+    if (!name){ saveName.focus(); return; }
+    const list = loadSaves();
+    list.unshift({ id: Date.now(), name, savedAt: Date.now(), lang: targetSelect.value, entries });
+    if (!writeSaves(list)){
+      saveOverlay.classList.remove('show');
+      statusEl.textContent = '저장에 실패했어요 (시크릿 모드이거나 저장 공간이 부족할 수 있어요). 대화는 그대로 두었어요.';
+      return;
+    }
+    const n = entries.length;
+    saveOverlay.classList.remove('show');
+    clearLog();
+    statusEl.textContent = `저장했어요: ${name} (${n}개 말풍선)`;
+  });
+
+  const listOverlay = document.getElementById('listOverlay');
+  const listBody = document.getElementById('listBody');
+  const listTitle = document.getElementById('listTitle');
+  const listBack = document.getElementById('listBack');
+
+  function renderList(){
+    listTitle.textContent = '저장된 대화 목록';
+    listBack.style.display = 'none';
+    listBody.innerHTML = '';
+    const list = loadSaves();
+    if (list.length === 0){
+      const e = document.createElement('div'); e.className = 'empty';
+      e.textContent = '저장된 대화가 없어요';
+      listBody.appendChild(e);
+      return;
+    }
+    list.forEach(item => {
+      const row = document.createElement('div'); row.className = 'saveItem';
+      const info = document.createElement('div'); info.className = 'info';
+      const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = item.name;
+      const meta = document.createElement('div'); meta.className = 'meta';
+      meta.textContent = `${fmtDate(item.savedAt)} · ${item.entries.length}개`;
+      info.appendChild(nm); info.appendChild(meta);
+      info.addEventListener('click', () => renderView(item));
+      const del = document.createElement('button'); del.textContent = '삭제';
+      del.addEventListener('click', () => {
+        if (!confirm(`"${item.name}" 저장 대화를 삭제할까요?`)) return;
+        writeSaves(loadSaves().filter(s => s.id !== item.id));
+        renderList();
+      });
+      row.appendChild(info); row.appendChild(del);
+      listBody.appendChild(row);
+    });
+  }
+  function renderView(item){
+    listTitle.textContent = item.name;
+    listBack.style.display = '';
+    listBody.innerHTML = '';
+    const wrap = document.createElement('div'); wrap.className = 'viewLog';
+    item.entries.forEach(en => wrap.appendChild(makeBubble(en.side, en.orig, en.text)));
+    listBody.appendChild(wrap);
+  }
+  document.getElementById('listBtn').addEventListener('click', () => {
+    renderList(); listOverlay.classList.add('show');
+  });
+  listBack.addEventListener('click', renderList);
+  document.getElementById('listClose').addEventListener('click', () => listOverlay.classList.remove('show'));
 
   // 특정 언어 차례를 놓쳤거나 순서를 바꾸고 싶을 때, 원하는 쪽 패널을 눌러 수동으로 전환
   function forceSwitch(side){
