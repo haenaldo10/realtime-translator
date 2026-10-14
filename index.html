@@ -175,6 +175,8 @@
     font-size: 14px;
     line-height: 1.5;
   }
+  .bubble { cursor: pointer; }
+  .bubble.speaking { box-shadow: 0 0 0 2px var(--ok); }
   .bubble .orig { font-size: 12px; opacity: 0.65; margin-bottom: 3px; }
   .bubble.ko { align-self: flex-start; background: var(--navy); border: 1px solid var(--line); border-bottom-left-radius: 3px; }
   .bubble.other { align-self: flex-end; background: #2c2210; border: 1px solid var(--amber-deep); border-bottom-right-radius: 3px; text-align: right; }
@@ -301,18 +303,38 @@
   // 화면 말풍선과 별개로, 저장용 대화 기록을 배열로 들고 있는다
   let entries = [];
 
-  function makeBubble(sideClass, origText, translatedText){
+  // 말풍선을 누르면 번역문을 음성으로 읽어준다 (대화 중에는 마이크와 겹치므로 막음)
+  function replayBubble(b, text, ttsLang){
+    if (running){
+      statusEl.textContent = '대화 중에는 다시 듣기를 쓸 수 없어요. "대화 종료" 후 눌러주세요.';
+      return;
+    }
+    speechSynthesis.cancel();
+    document.querySelectorAll('.bubble.speaking').forEach(x => x.classList.remove('speaking'));
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = ttsLang;
+    const done = () => b.classList.remove('speaking');
+    u.onend = done; u.onerror = done;
+    b.classList.add('speaking');
+    speechSynthesis.speak(u);
+  }
+
+  // langCode = 이 대화의 상대 언어 코드. 'other' 말풍선의 번역문은 상대 언어, 'ko' 말풍선은 한국어
+  function makeBubble(sideClass, origText, translatedText, langCode){
     const b = document.createElement('div');
     b.className = 'bubble ' + sideClass;
     const o = document.createElement('div'); o.className = 'orig'; o.textContent = origText;
     const t = document.createElement('div'); t.textContent = translatedText;
     b.appendChild(o); b.appendChild(t);
+    const ttsLang = sideClass === 'other' ? (LANGS[langCode] || LANGS.en).tts : KO.tts;
+    b.addEventListener('click', () => replayBubble(b, translatedText, ttsLang));
     return b;
   }
 
   function addBubble(sideClass, origText, translatedText){
-    entries.push({ side: sideClass, orig: origText, text: translatedText });
-    logEl.appendChild(makeBubble(sideClass, origText, translatedText));
+    const lang = targetSelect.value;
+    entries.push({ side: sideClass, orig: origText, text: translatedText, lang });
+    logEl.appendChild(makeBubble(sideClass, origText, translatedText, lang));
     logEl.scrollTop = logEl.scrollHeight;
   }
 
@@ -598,7 +620,7 @@
     listBack.style.display = '';
     listBody.innerHTML = '';
     const wrap = document.createElement('div'); wrap.className = 'viewLog';
-    item.entries.forEach(en => wrap.appendChild(makeBubble(en.side, en.orig, en.text)));
+    item.entries.forEach(en => wrap.appendChild(makeBubble(en.side, en.orig, en.text, en.lang || item.lang)));
     listBody.appendChild(wrap);
   }
   document.getElementById('listBtn').addEventListener('click', () => {
